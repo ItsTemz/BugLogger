@@ -1,83 +1,172 @@
-const path = require('path')
-const url = require('url')
-const { app, BrowserWindow } = require('electron')
+const path = require("path");
+const url = require("url");
+const { app, BrowserWindow, ipcMain , Menu} = require("electron");
+const Log = require("./src/models/Log");
+const connectDB = require("./src/config/db");
 
-let mainWindow
+//Connect to database
+connectDB();
 
-let isDev = false
+let mainWindow;
+
+let isDev = false;
+const isMac = process.platform === 'darwin' ? true : false ;
 
 if (
-	process.env.NODE_ENV !== undefined &&
-	process.env.NODE_ENV === 'development'
+  process.env.NODE_ENV !== undefined &&
+  process.env.NODE_ENV === "development"
 ) {
-	isDev = true
+  isDev = true;
 }
 
 function createMainWindow() {
-	mainWindow = new BrowserWindow({
-		width: isDev ? 1400 : 1100,
-		height: 800,
-		show: false,
-		backgroundColor: 'white',
-		icon: './assets/icons/icon.png',
-		webPreferences: {
-			nodeIntegration: true,
-		},
-	})
+  mainWindow = new BrowserWindow({
+    width: isDev ? 1400 : 1100,
+    height: 800,
+    show: false,
+    backgroundColor: "white",
+    icon: "./assets/icons/icon.png",
+    webPreferences: {
+      nodeIntegration: true,
+    },
+  });
 
-	let indexPath
+  let indexPath;
 
-	if (isDev && process.argv.indexOf('--noDevServer') === -1) {
-		indexPath = url.format({
-			protocol: 'http:',
-			host: 'localhost:8080',
-			pathname: 'index.html',
-			slashes: true,
-		})
-	} else {
-		indexPath = url.format({
-			protocol: 'file:',
-			pathname: path.join(__dirname, 'dist', 'index.html'),
-			slashes: true,
-		})
-	}
+  if (isDev && process.argv.indexOf("--noDevServer") === -1) {
+    indexPath = url.format({
+      protocol: "http:",
+      host: "localhost:8080",
+      pathname: "index.html",
+      slashes: true,
+    });
+  } else {
+    indexPath = url.format({
+      protocol: "file:",
+      pathname: path.join(__dirname, "dist", "index.html"),
+      slashes: true,
+    });
+  }
 
-	mainWindow.loadURL(indexPath)
+  mainWindow.loadURL(indexPath);
 
-	// Don't show until we are ready and loaded
-	mainWindow.once('ready-to-show', () => {
-		mainWindow.show()
+  // Don't show until we are ready and loaded
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
 
-		// Open devtools if dev
-		if (isDev) {
-			const {
-				default: installExtension,
-				REACT_DEVELOPER_TOOLS,
-			} = require('electron-devtools-installer')
+    // Open devtools if dev
+    if (isDev) {
+      const {
+        default: installExtension,
+        REACT_DEVELOPER_TOOLS,
+      } = require("electron-devtools-installer");
 
-			installExtension(REACT_DEVELOPER_TOOLS).catch((err) =>
-				console.log('Error loading React DevTools: ', err)
-			)
-			mainWindow.webContents.openDevTools()
-		}
-	})
+      installExtension(REACT_DEVELOPER_TOOLS).catch((err) =>
+        console.log("Error loading React DevTools: ", err)
+      );
+      mainWindow.webContents.openDevTools();
+    }
+  });
 
-	mainWindow.on('closed', () => (mainWindow = null))
+  mainWindow.on("closed", () => (mainWindow = null));
 }
 
-app.on('ready', createMainWindow)
+const menu = [
+  ...(isMac ? [{ role: "appMenu" }] : []),
+  {
+    role: "fileMenu",
+  },
+  {
+    role: "editMenu",
+  },
+  {
+    label: "Logs",
+    submenu: [
+      {
+        label: "Clear Logs",
+        click: () => clearLogs(),
+      },
+    ],
+  },
+  ...(isDev
+    ? [
+        {
+          label: "Developer",
+          submenu: [
+            {
+              role: "reload",
+              role: "forcereload",
+              type: "separator",
+              role: "toggledevtools",
+            },
+          ],
+        },
+      ]
+    : []),
+];
 
-app.on('window-all-closed', () => {
-	if (process.platform !== 'darwin') {
-		app.quit()
-	}
-})
+app.on("ready", ()=>{
+	createMainWindow;
 
-app.on('activate', () => {
-	if (mainWindow === null) {
-		createMainWindow()
+	const mainMenu = Menu.buildFromTemplate(menu);
+	Menu.setApplicationMenu(mainMenu);
+});
+
+
+
+// load the database items
+ipcMain.on("logs:load", sendLogs);
+
+async function sendLogs() {
+  try {
+    const Logs = await Log.find().sort({ created: 1 });
+    mainWindow.webContents.send("logs:get", JSON.stringify(Logs));
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+//create Log
+ipcMain.on("logs:add", async (e, item) => {
+  try {
+    await Log.create(item);
+    sendLogs();
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+// Delete Log
+ipcMain.on("logs:delete", async (e, id) => {
+  try {
+    await Log.findOneAndDelete({ _id: id });
+    sendLogs();
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+// clear all logs
+async function clearLogs(){
+	try {
+		await Log.deleteMany({})
+		mainWindow.webContents.send('logs:clear')
+	} catch (error) {
+		console.log(error)
 	}
-})
+}
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
+
+app.on("activate", () => {
+  if (mainWindow === null) {
+    createMainWindow();
+  }
+});
 
 // Stop error
-app.allowRendererProcessReuse = true
+app.allowRendererProcessReuse = true;

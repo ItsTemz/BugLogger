@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import { ipcRenderer } from "electron";
+import React, { useEffect, useState } from "react";
 import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
 import Table from "react-bootstrap/Table";
@@ -7,34 +8,25 @@ import LogItem from "./LogItem";
 
 const App = () => {
   const date = new Date().toString();
-  const [logs, setLogs] = useState([
-    {
-      _id: 1,
-      text: "This is log one",
-      priority: "low",
-      user: "Temz",
-      created: date,
-    },
-    {
-      _id: 2,
-      text: "This is log two",
-      priority: "moderate",
-      user: "leleko",
-      created: date,
-    },
-    {
-      _id: 3,
-      text: "This is log three",
-      priority: "high",
-      user: "Pego",
-      created: date,
-    },
-  ]);
+  const [logs, setLogs] = useState([]);
   const [alert, setAlert] = useState({
     show: false,
     message: "",
     variant: "success",
   });
+
+  useEffect(() => {
+    ipcRenderer.send("logs:load");
+
+    ipcRenderer.on("logs:get", (ee, logs) => {
+      setLogs(JSON.parse(logs));
+    });
+
+    ipcRenderer.on('logs:clear', ()=>{
+      setLogs([])
+      showAlert('logs Cleared')
+    })
+  }, []);
 
   function addItem(item) {
     if (item.text === "" || item.user === "" || item.priority === "") {
@@ -42,15 +34,18 @@ const App = () => {
       return false;
     }
 
-    item._id = Math.floor(Math.random() * 90000) + 10000;
-    item.created = new Date().toString();
-    setLogs([...logs, item]);
+    // item._id = Math.floor(Math.random() * 90000) + 10000;
+    // item.created = new Date().toString();
+    // setLogs([...logs, item]);
+
+    ipcRenderer.send('logs:add', item);
 
     showAlert("Log Added.");
   }
 
   function deleteItem(_id) {
-    setLogs(logs.filter((item) => item._id !== _id));
+    //setLogs(logs.filter((item) => item._id !== _id));
+    ipcRenderer.send('logs:delete', _id)
     showAlert("Log Removed.");
   }
 

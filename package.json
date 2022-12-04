@@ -23,6 +23,7 @@
   "dependencies": {
     "bootstrap": "^5.2.3",
     "moment": "^2.29.4",
+    "mongoose": "^6.7.5",
     "react": "^16.13.1",
     "react-bootstrap": "^2.6.0",
     "react-dom": "^16.13.1",
